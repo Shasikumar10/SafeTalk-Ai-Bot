@@ -7,3 +7,4 @@ torchaudio
 openai-whisper
 noisereduce
 silero-vad
+multipart
