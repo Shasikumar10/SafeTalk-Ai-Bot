@@ -1,13 +1,13 @@
 import numpy as np
-import soundfile as sf
 import noisereduce as nr
 import whisper
 import torch
+import librosa
 
-# Load Whisper model once
+# Load STT model once
 stt_model = whisper.load_model("base")
 
-# Load Silero VAD once
+# Load VAD model once
 vad_model, vad_utils = torch.hub.load(
     repo_or_dir="snakers4/silero-vad",
     model="silero_vad",
@@ -17,16 +17,15 @@ vad_model, vad_utils = torch.hub.load(
 
 
 def process_audio(file_path: str):
-    # Load audio
-    audio, sr = sf.read(file_path)
+    """
+    Audio → Noise Suppression → VAD → STT
+    """
 
-    # Convert to mono
-    if audio.ndim > 1:
-        audio = np.mean(audio, axis=1)
-
+    # Load audio safely (any format)
+    audio, sr = librosa.load(file_path, sr=16000, mono=True)
     audio = audio.astype(np.float32)
 
-    # Noise suppression
+    # Noise Suppression
     clean_audio = nr.reduce_noise(y=audio, sr=sr)
 
     # Voice Activity Detection
@@ -37,12 +36,16 @@ def process_audio(file_path: str):
     )
 
     if not speech_timestamps:
-        return {"text": "", "language": None}
+        return {
+            "text": "",
+            "language": None
+        }
 
-    # Collect speech segments
-    segments = []
-    for ts in speech_timestamps:
-        segments.append(clean_audio[ts["start"]:ts["end"]])
+    # Extract speech segments
+    segments = [
+        clean_audio[ts["start"]:ts["end"]]
+        for ts in speech_timestamps
+    ]
 
     merged_audio = np.concatenate(segments)
 

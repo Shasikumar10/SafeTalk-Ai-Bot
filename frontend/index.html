@@ -1,37 +1,70 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>SafeTalk Audio Demo</title>
+  <title>SafeTalk Voice Demo</title>
 </head>
 <body>
-  <h2>SafeTalk Audio Pipeline</h2>
+  <h2>SafeTalk Voice Assistant</h2>
 
-  <input type="file" id="audioFile" accept="audio/*" />
+  <!-- Upload Audio -->
+  <h3>Upload Audio File</h3>
+  <input type="file" id="audioFile" accept="audio/*">
   <br><br>
-  <button onclick="sendAudio()">Upload & Process</button>
+  <button onclick="uploadFile()">Upload & Process</button>
 
-  <h3>Result:</h3>
+  <hr>
+
+  <!-- Record Audio -->
+  <h3>Speak (Live Microphone)</h3>
+  <button onclick="startRecording()">Start Recording</button>
+  <button onclick="stopRecording()">Stop & Send</button>
+
+  <h3>Response</h3>
   <pre id="output"></pre>
 
   <script>
-    async function sendAudio() {
-      const fileInput = document.getElementById("audioFile");
-      const output = document.getElementById("output");
+    let mediaRecorder;
+    let audioChunks = [];
 
+    async function uploadFile() {
+      const fileInput = document.getElementById("audioFile");
       if (!fileInput.files.length) {
         alert("Select an audio file");
         return;
       }
+      sendAudio(fileInput.files[0]);
+    }
+
+    async function startRecording() {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaRecorder = new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.start();
+    }
+
+    async function stopRecording() {
+      mediaRecorder.stop();
+
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: "audio/webm" });
+        sendAudio(blob);
+      };
+    }
+
+    async function sendAudio(audioBlob) {
+      const output = document.getElementById("output");
 
       const formData = new FormData();
-      formData.append("file", fileInput.files[0]);
+      formData.append("file", audioBlob);
 
-      const res = await fetch("http://127.0.0.1:8000/process-audio", {
+      const response = await fetch("http://127.0.0.1:8000/process-audio", {
         method: "POST",
         body: formData
       });
 
-      const data = await res.json();
+      const data = await response.json();
       output.textContent = JSON.stringify(data, null, 2);
     }
   </script>

@@ -1,18 +1,49 @@
-ALLOWED_LANGUAGES = ["en"]
+"""
+3.6 Language Validator
+---------------------
+Checks whether the detected language from STT
+is supported by the system.
+"""
 
-def validate_language(stt_result: dict):
-    language = stt_result.get("language")
+SUPPORTED_LANGUAGES = {
+    "en": "English"
+}
 
-    if language not in ALLOWED_LANGUAGES:
+def validate_language(stt_output: dict):
+    """
+    Input:
+        stt_output = {
+            "text": "...",
+            "language": "en"
+        }
+
+    Output (allowed):
+        {
+            "allowed": True
+        }
+
+    Output (blocked):
+        {
+            "allowed": False,
+            "response": {...}
+        }
+    """
+
+    language = stt_output.get("language")
+
+    if language not in SUPPORTED_LANGUAGES:
         return {
             "allowed": False,
             "response": {
                 "error": "unsupported_language",
-                "message": "Currently supported language is English only."
+                "message": (
+                    "I currently support English only. "
+                    "Please ask your question in English."
+                ),
+                "detected_language": language
             }
         }
 
     return {
-        "allowed": True,
-        "response": None
+        "allowed": True
     }
