@@ -1,63 +1,104 @@
-import numpy as np
-import librosa
-import whisper
 import torch
+import librosa
+import numpy as np
+import tempfile
+import os
+import noisereduce as nr
+import soundfile as sf
 
-# Load Whisper once
-stt_model = whisper.load_model("base")
-
-# Load Silero VAD once
+# =========================
+# Load Silero VAD
+# =========================
 vad_model, vad_utils = torch.hub.load(
     repo_or_dir="snakers4/silero-vad",
     model="silero_vad",
-    trust_repo=True
+    force_reload=False
 )
-(get_speech_timestamps, _, _, _, _) = vad_utils
+
+(
+    get_speech_timestamps,
+    save_audio,
+    read_audio,
+    VADIterator,
+    collect_chunks
+) = vad_utils
 
 
-# ---------------- Noise Suppression (librosa DSP) ----------------
-def spectral_noise_suppress(audio, n_fft=1024, hop_length=256):
-    stft = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
-    magnitude, phase = np.abs(stft), np.angle(stft)
+# =========================
+# Merge nearby speech segments
+# =========================
+def merge_segments(segments, max_gap=0.8):
+    """
+    Merge speech segments if silence gap is small.
+    Fixes early cutoff and mid-sentence pauses.
+    """
+    merged = []
+    for seg in segments:
+        if not merged:
+            merged.append(seg)
+            continue
 
-    noise_floor = np.percentile(magnitude, 20, axis=1, keepdims=True)
-    cleaned_mag = np.maximum(magnitude - noise_floor, 0)
+        gap = seg["start"] - merged[-1]["end"]
+        if gap < max_gap:
+            merged[-1]["end"] = seg["end"]
+        else:
+            merged.append(seg)
 
-    cleaned_stft = cleaned_mag * np.exp(1j * phase)
-    return librosa.istft(cleaned_stft, hop_length=hop_length)
+    return merged
 
 
-# ---------------- Full Audio Pipeline ----------------
-def process_audio(file_path: str):
-    audio, sr = librosa.load(file_path, sr=16000, mono=True)
-    audio = audio.astype(np.float32)
+# =========================
+# Main audio processing pipeline
+# =========================
+def process_audio(file_path: str, sample_rate: int = 16000):
+    """
+    Steps:
+    1. Load audio
+    2. Noise suppression (librosa + noisereduce)
+    3. Voice Activity Detection (Silero)
+    4. Merge speech segments
+    5. Return clean speech audio
+    """
 
-    clean_audio = spectral_noise_suppress(audio)
+    # 1️⃣ Load audio
+    audio, sr = librosa.load(file_path, sr=sample_rate, mono=True)
 
+    # 2️⃣ Noise suppression
+    reduced_noise = nr.reduce_noise(
+        y=audio,
+        sr=sr,
+        prop_decrease=0.9
+    )
+
+    # Convert to torch tensor for VAD
+    audio_tensor = torch.from_numpy(reduced_noise).float()
+
+    # 3️⃣ Voice Activity Detection (tuned)
     speech_timestamps = get_speech_timestamps(
-        clean_audio,
+        audio_tensor,
         vad_model,
-        sampling_rate=sr,
-        min_silence_duration_ms=150
+        threshold=0.3,                  # less aggressive
+        min_speech_duration_ms=500,     # wait before cutting
+        min_silence_duration_ms=800     # allow pauses
     )
 
     if not speech_timestamps:
-        return {"text": "", "language": None}
+        return None  # No speech detected
 
-    speech_segments = [
-        clean_audio[ts["start"]:ts["end"]]
-        for ts in speech_timestamps
-    ]
+    # 4️⃣ MERGE SEGMENTS (THIS IS THE KEY FIX)
+    speech_timestamps = merge_segments(speech_timestamps)
 
-    merged_audio = np.concatenate(speech_segments)
-
-    # 🔤 Whisper AUTO language detection
-    result = stt_model.transcribe(
-        merged_audio,
-        fp16=False
+    # 5️⃣ Collect speech chunks
+    speech_audio = collect_chunks(
+        speech_timestamps,
+        audio_tensor
     )
 
-    return {
-        "text": result["text"].strip(),
-        "language": result.get("language")
-    }
+    # Save processed speech to temp WAV
+    tmp_wav = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".wav"
+    )
+    sf.write(tmp_wav.name, speech_audio.numpy(), sr)
+
+    return tmp_wav.name

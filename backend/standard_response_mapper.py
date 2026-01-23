@@ -1,68 +1,29 @@
-"""
-3.10 Standard Response Mapper
-----------------------------
-Deterministic, policy-driven response selection.
-NO ML. NO randomness.
-"""
-
-def map_response(
-    greeting: dict | None = None,
-    safety: dict | None = None,
-    intent: dict | None = None,
-    language: str = "en"
-):
+def map_response(greeting, safety, intent, language):
     """
-    Priority order (highest → lowest):
-    1. Safety blocks
-    2. Greetings
-    3. Repeated / non-informational intents
+    Return a deterministic response ONLY for strict cases.
+    Otherwise return None to allow RAG / LLM.
     """
 
-    # -------------------------------------------------
-    # 1️⃣ SAFETY HAS HIGHEST PRIORITY
-    # -------------------------------------------------
+    # 1️⃣ Safety has absolute priority
     if safety:
         return {
             "response_type": "safety_block",
-            "message": safety.get(
-                "message",
-                "I can’t help with that request."
-            ),
-            "details": {
-                "category": safety.get("category"),
-                "score": safety.get("score")
-            }
+            "message": "I can’t help with that request, but I’m here if you need safe assistance."
         }
 
-    # -------------------------------------------------
-    # 2️⃣ GREETING (NON-INFORMATIONAL)
-    # -------------------------------------------------
+    # 2️⃣ Greeting ONLY
     if greeting:
         return {
-            "response_type": "standard_greeting",
-            "message": greeting["message"]
+            "response_type": "greeting",
+            "message": "Hello! How can I help you today?"
         }
 
-    # -------------------------------------------------
-    # 3️⃣ REPEATED OR LOW-VALUE QUERIES
-    # -------------------------------------------------
-    if intent:
-        if intent.get("intent") == "repeated_query":
-            return {
-                "response_type": "standard_notice",
-                "message": (
-                    "You’ve asked a similar question earlier. "
-                    "Would you like me to continue from there?"
-                )
-            }
+    # 3️⃣ Explicit follow-up intent ONLY
+    if intent and intent.get("intent") == "follow_up":
+        return {
+            "response_type": "follow_up",
+            "message": "You asked a follow-up. Would you like me to continue from where we left off?"
+        }
 
-        if intent.get("intent") == "empty_input":
-            return {
-                "response_type": "standard_notice",
-                "message": "I didn’t catch that. Could you please repeat?"
-            }
-
-    # -------------------------------------------------
-    # 4️⃣ NO STANDARD RESPONSE → CONTINUE PIPELINE
-    # -------------------------------------------------
+    # 🚫 IMPORTANT: Do NOT block normal questions
     return None

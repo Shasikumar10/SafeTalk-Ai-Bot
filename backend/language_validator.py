@@ -4,28 +4,24 @@ SUPPORTED_LANGUAGES = {
     "te": "Telugu"
 }
 
-CONFIDENCE_THRESHOLD = 0.60
+def validate_language(stt_result: dict):
+    detected = stt_result.get("language")
 
+    # ✅ FIX: live mic does not provide language → assume English
+    if detected is None:
+        detected = "en"
 
-def validate_language(stt_result: dict, text_lang: dict | None):
-    whisper_lang = stt_result.get("language")
-    fasttext_lang = text_lang["language"] if text_lang else None
-    confidence = text_lang["confidence"] if text_lang else 0.0
-
-    # Prefer fastText if confident
-    final_lang = fasttext_lang if confidence >= CONFIDENCE_THRESHOLD else whisper_lang
-
-    if final_lang not in SUPPORTED_LANGUAGES:
+    if detected not in SUPPORTED_LANGUAGES:
         return {
             "allowed": False,
             "response": {
                 "response_type": "unsupported_language",
-                "detected_language": final_lang,
+                "detected_language": detected,
                 "message": "This language is not supported yet."
             }
         }
 
     return {
         "allowed": True,
-        "language": final_lang
+        "language": detected
     }
