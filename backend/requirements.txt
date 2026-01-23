@@ -5,5 +5,5 @@ soundfile
 torch
 torchaudio
 openai-whisper
-silero-vad
 noisereduce
+silero-vad

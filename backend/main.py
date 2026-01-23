@@ -1,25 +1,22 @@
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, UploadFile, File
 import tempfile
 import os
 
-from audio.audio_input import load_audio_file
-from audio.noise_suppressor import suppress_noise
-from audio.vad import apply_vad
-from audio.stt import transcribe
+from audio_pipeline import process_audio
 
-app = FastAPI()
+app = FastAPI(title="SafeTalk Audio Pipeline")
 
-@app.post("/process-audio/")
-async def process_audio(file: UploadFile):
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
+@app.get("/")
+def health():
+    return {"status": "SafeTalk backend running"}
+
+@app.post("/process-audio")
+async def process(file: UploadFile = File(...)):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         tmp.write(await file.read())
         tmp_path = tmp.name
 
-    audio = load_audio_file(tmp_path)
-    audio = suppress_noise(audio)
-    speech_segments = apply_vad(audio)
-    stt_result = transcribe(speech_segments)
-
+    result = process_audio(tmp_path)
     os.remove(tmp_path)
 
-    return stt_result
+    return result
