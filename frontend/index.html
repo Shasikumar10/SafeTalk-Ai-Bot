@@ -1,105 +1,193 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>SafeTalk AI</title>
-  <style>
-    body {
-      margin: 0;
-      font-family: Arial, sans-serif;
-      background: radial-gradient(circle at top, #0f172a, #020617);
-      color: #e5e7eb;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      height: 100vh;
-    }
+<meta charset="UTF-8" />
+<title>SafeTalk AI</title>
 
-    .card {
-      background: #020617;
-      padding: 30px;
-      border-radius: 14px;
-      width: 380px;
-      text-align: center;
-      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
-    }
+<style>
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  background: radial-gradient(circle at top, #0f172a, #020617);
+  color: #e5e7eb;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+}
 
-    button {
-      background: #2563eb;
-      border: none;
-      padding: 12px 20px;
-      border-radius: 8px;
-      color: white;
-      cursor: pointer;
-      font-size: 15px;
-    }
+.card {
+  background: #020617;
+  padding: 30px;
+  border-radius: 14px;
+  width: 440px;
+  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
+  text-align: center;
+}
 
-    button:disabled {
-      background: #475569;
-      cursor: not-allowed;
-    }
+button {
+  background: #2563eb;
+  border: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  color: white;
+  font-size: 15px;
+  cursor: pointer;
+}
 
-    .answer {
-      margin-top: 20px;
-      text-align: left;
-    }
+#waveform {
+  display: none;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 12px;
+  height: 30px;
+}
 
-    .tag {
-      display: inline-block;
-      background: #16a34a;
-      padding: 4px 8px;
-      border-radius: 6px;
-      font-size: 12px;
-      margin-top: 6px;
-    }
-  </style>
+.bar {
+  width: 6px;
+  background: #38bdf8;
+  animation: bounce 1s infinite ease-in-out;
+}
+
+.bar:nth-child(2) { animation-delay: 0.1s }
+.bar:nth-child(3) { animation-delay: 0.2s }
+.bar:nth-child(4) { animation-delay: 0.3s }
+.bar:nth-child(5) { animation-delay: 0.4s }
+
+@keyframes bounce {
+  0%,100% { height: 8px }
+  50% { height: 28px }
+}
+
+.answer {
+  margin-top: 18px;
+  text-align: left;
+}
+</style>
 </head>
+
 <body>
 
 <div class="card">
   <h2>🛡 SafeTalk AI</h2>
-  <p>Voice-first, safe, explainable assistant</p>
+  <p>Speak naturally — auto language & auto stop</p>
 
   <button id="recordBtn">🎤 Start Recording</button>
 
+  <div id="waveform">
+    <div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div><div class="bar"></div>
+    <div class="bar"></div>
+  </div>
+
   <div class="answer">
-    <h4>Answer</h4>
     <p id="answerText">—</p>
-    <span id="modeTag" class="tag" style="display:none;"></span>
   </div>
 </div>
 
 <script>
 let recorder;
-let audioChunks = [];
+let mediaStream;
+let isRecording = false;
+
+// Audio analysis
+let audioContext;
+let analyser;
+let silenceStart = null;
+let recordStartTime = null;
+
+// 🔑 TUNING PARAMETERS (IMPORTANT)
+const SILENCE_THRESHOLD = 0.015;   // energy threshold
+const SILENCE_DURATION = 2500;     // ms of silence
+const MIN_RECORD_TIME  = 2500;     // ms minimum speech
 
 const recordBtn = document.getElementById("recordBtn");
 const answerText = document.getElementById("answerText");
-const modeTag = document.getElementById("modeTag");
+const waveform = document.getElementById("waveform");
 
-function speak(text) {
-  if (!text) return;
+/* ---------- Speak in detected language ---------- */
+function speak(text, lang) {
+  const utter = new SpeechSynthesisUtterance(text);
+  utter.lang =
+    lang === "te" ? "te-IN" :
+    lang === "hi" ? "hi-IN" :
+    "en-IN";
+
   window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = "en-IN";
-  utterance.rate = 0.95;
-  window.speechSynthesis.speak(utterance);
+  window.speechSynthesis.speak(utter);
 }
 
-recordBtn.onclick = async () => {
-  recordBtn.disabled = true;
+/* ---------- Monitor silence (ENERGY-BASED VAD) ---------- */
+function monitorSilence() {
+  if (!isRecording) return;
+
+  const buffer = new Uint8Array(analyser.fftSize);
+  analyser.getByteTimeDomainData(buffer);
+
+  let sum = 0;
+  for (let i = 0; i < buffer.length; i++) {
+    const v = (buffer[i] - 128) / 128;
+    sum += v * v;
+  }
+  const rms = Math.sqrt(sum / buffer.length);
+
+  if (rms < SILENCE_THRESHOLD) {
+    if (!silenceStart) silenceStart = Date.now();
+
+    const silenceElapsed = Date.now() - silenceStart;
+    const totalElapsed = Date.now() - recordStartTime;
+
+    // ✅ Only auto-stop if BOTH conditions are met
+    if (
+      silenceElapsed > SILENCE_DURATION &&
+      totalElapsed > MIN_RECORD_TIME
+    ) {
+      stopRecording();
+      return;
+    }
+  } else {
+    silenceStart = null;
+  }
+
+  requestAnimationFrame(monitorSilence);
+}
+
+/* ---------- Start recording ---------- */
+async function startRecording() {
+  isRecording = true;
+  silenceStart = null;
+  recordStartTime = Date.now();
+
+  recordBtn.innerText = "🎤 Restart Recording";
+  waveform.style.display = "flex";
   answerText.innerText = "Listening…";
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  recorder = new MediaRecorder(stream);
-  audioChunks = [];
+  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  recorder.ondataavailable = e => audioChunks.push(e.data);
+  // Setup analyser
+  audioContext = new AudioContext();
+  analyser = audioContext.createAnalyser();
+  analyser.fftSize = 2048;
+
+  const source = audioContext.createMediaStreamSource(mediaStream);
+  source.connect(analyser);
+
+  recorder = new MediaRecorder(mediaStream);
+  const chunks = [];
+
+  recorder.ondataavailable = e => chunks.push(e.data);
 
   recorder.onstop = async () => {
-    const blob = new Blob(audioChunks, { type: "audio/wav" });
+    waveform.style.display = "none";
+    mediaStream.getTracks().forEach(t => t.stop());
+    audioContext.close();
+
+    // If no audio, ignore
+    if (chunks.length === 0) return;
+
+    const blob = new Blob(chunks, { type: "audio/wav" });
     const formData = new FormData();
-    formData.append("file", blob, "speech.wav");
+    formData.append("file", blob);
 
     answerText.innerText = "Processing…";
 
@@ -110,20 +198,33 @@ recordBtn.onclick = async () => {
 
     const data = await res.json();
 
-    answerText.innerText = data.answer || "No response.";
-    modeTag.style.display = "inline-block";
-    modeTag.innerText = data.mode || "response";
+    answerText.innerText = data.answer;
+    speak(data.answer, data.language);
 
-    // 🔊 AUTO SPEAK
-    speak(data.answer);
-
-    recordBtn.disabled = false;
+    recordBtn.innerText = "🎤 Start Recording";
+    isRecording = false;
   };
 
   recorder.start();
+  monitorSilence();
+}
 
-  // ⏱️ Fixed max duration (prevents infinite recording)
-  setTimeout(() => recorder.stop(), 6000);
+/* ---------- Stop recording ---------- */
+function stopRecording() {
+  if (!isRecording) return;
+  isRecording = false;
+  recorder.stop();
+}
+
+/* ---------- Button behavior ---------- */
+recordBtn.onclick = () => {
+  if (isRecording) {
+    // Stop current and immediately start fresh
+    recorder.stop();
+    setTimeout(startRecording, 200);
+  } else {
+    startRecording();
+  }
 };
 </script>
 

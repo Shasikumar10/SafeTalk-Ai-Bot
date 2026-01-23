@@ -19,16 +19,20 @@ app.add_middleware(
 
 
 # -------------------------
-# Utilities
+# Language detection
 # -------------------------
-def init_trace():
-    return {
-        "audio": {},
-        "stt": {},
-        "rag": {},
-    }
+def detect_language(text: str) -> str:
+    for ch in text:
+        if "\u0C00" <= ch <= "\u0C7F":
+            return "te"
+        if "\u0900" <= ch <= "\u097F":
+            return "hi"
+    return "en"
 
 
+# -------------------------
+# Normalize query
+# -------------------------
 def normalize_query(text: str) -> str:
     fillers = ["uh", "um", "like", "you know"]
     for f in fillers:
@@ -37,71 +41,44 @@ def normalize_query(text: str) -> str:
 
 
 # -------------------------
-# Request Models
-# -------------------------
-class TextPayload(BaseModel):
-    text: str
-
-
-# -------------------------
-# Routes
+# API
 # -------------------------
 @app.post("/process-audio")
 async def process_audio_endpoint(file: UploadFile = File(...)):
-    trace = init_trace()
-
-    # Save uploaded audio
     with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         tmp.write(await file.read())
         audio_path = tmp.name
 
     try:
-        # Audio pipeline (noise + VAD)
-        clean_audio_path = process_audio(audio_path)
-
-        if not clean_audio_path:
+        clean_audio = process_audio(audio_path)
+        if not clean_audio:
             return {
-                "mode": "stt_low_confidence",
-                "answer": "I didn’t catch that clearly. Could you please repeat?",
-                "sources": [],
+                "answer": "I couldn’t hear you clearly. Please try again.",
+                "language": "en",
+                "mode": "stt_low_confidence"
             }
 
-        # Speech → Text
-        text = transcribe_audio(clean_audio_path, language="en-IN")
-        trace["stt"]["text"] = text
-
-        # Confidence guard
-        if not text or len(text.split()) < 3:
+        # STT
+        text = transcribe_audio(clean_audio)
+        if not text or len(text.split()) < 2:
             return {
-                "mode": "stt_low_confidence",
-                "answer": "I didn’t catch that clearly. Could you please repeat?",
-                "sources": [],
+                "answer": "I couldn’t hear you clearly. Please try again.",
+                "language": "en",
+                "mode": "stt_low_confidence"
             }
 
-        # Normalize
         text = normalize_query(text)
+        language = detect_language(text)
 
-        # RAG / LLM
-        result = answer_query_hybrid(text, trace)
+        # RAG + LLM
+        result = answer_query_hybrid(
+            query=text,
+            language=language
+        )
+
+        result["language"] = language
         return result
 
     finally:
         if os.path.exists(audio_path):
             os.remove(audio_path)
-
-
-@app.post("/process-text")
-async def process_text(payload: TextPayload):
-    trace = init_trace()
-
-    text = payload.text.strip()
-    if not text:
-        return {
-            "mode": "empty",
-            "answer": "Please say or type something.",
-            "sources": [],
-        }
-
-    text = normalize_query(text)
-    result = answer_query_hybrid(text, trace)
-    return result

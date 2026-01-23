@@ -15,14 +15,11 @@ client = Groq(api_key=GROQ_API_KEY)
 MODEL = "llama-3.1-8b-instant"
 
 
-def answer_general(question: str) -> str:
+def answer_general(prompt: str) -> str:
     res = client.chat.completions.create(
         model=MODEL,
-        messages=[
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": question},
-        ],
-        temperature=0.4,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.4
     )
     return res.choices[0].message.content.strip()
 
