@@ -11,3 +11,4 @@ sentence-transformers
 scikit-learn
 transformers
 detoxify
+fasttext-wheel

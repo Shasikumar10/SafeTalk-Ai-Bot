@@ -1,50 +1,68 @@
 """
 3.10 Standard Response Mapper
------------------------------
-Centralized deterministic responses for
-greetings, safety blocks, and cached queries.
+----------------------------
+Deterministic, policy-driven response selection.
+NO ML. NO randomness.
 """
 
 def map_response(
-    *,
-    greeting=None,
-    safety=None,
-    intent=None,
+    greeting: dict | None = None,
+    safety: dict | None = None,
+    intent: dict | None = None,
+    language: str = "en"
 ):
     """
-    Priority order:
-    1. Greeting
-    2. Safety block
-    3. Cached / repeated query
+    Priority order (highest → lowest):
+    1. Safety blocks
+    2. Greetings
+    3. Repeated / non-informational intents
     """
 
-    # 1️⃣ Greeting
-    if greeting is not None:
+    # -------------------------------------------------
+    # 1️⃣ SAFETY HAS HIGHEST PRIORITY
+    # -------------------------------------------------
+    if safety:
         return {
-            "response_type": "standard_greeting",
-            "message": "Hello! How can I help you today?"
-        }
-
-    # 2️⃣ Safety block
-    if safety is not None:
-        return {
-            "response_type": "standard_safety_block",
-            "reason": safety.get("reason", "policy_violation"),
-            "category": safety.get("category"),
-            "score": safety.get("score"),
+            "response_type": "safety_block",
             "message": safety.get(
                 "message",
-                "This request cannot be processed due to safety policies."
-            )
+                "I can’t help with that request."
+            ),
+            "details": {
+                "category": safety.get("category"),
+                "score": safety.get("score")
+            }
         }
 
-    # 3️⃣ Cached / repeated query
-    if intent is not None and intent.get("intent") == "repeated_query":
+    # -------------------------------------------------
+    # 2️⃣ GREETING (NON-INFORMATIONAL)
+    # -------------------------------------------------
+    if greeting:
         return {
-            "response_type": "cached_response",
-            "message": "You asked a similar question earlier. Reusing the cached response.",
-            "similarity_score": intent.get("similarity_score")
+            "response_type": "standard_greeting",
+            "message": greeting["message"]
         }
 
-    # No standard response matched
+    # -------------------------------------------------
+    # 3️⃣ REPEATED OR LOW-VALUE QUERIES
+    # -------------------------------------------------
+    if intent:
+        if intent.get("intent") == "repeated_query":
+            return {
+                "response_type": "standard_notice",
+                "message": (
+                    "You’ve asked a similar question earlier. "
+                    "Would you like me to continue from there?"
+                )
+            }
+
+        if intent.get("intent") == "empty_input":
+            return {
+                "response_type": "standard_notice",
+                "message": "I didn’t catch that. Could you please repeat?"
+            }
+
+    # -------------------------------------------------
+    # 4️⃣ NO STANDARD RESPONSE → CONTINUE PIPELINE
+    # -------------------------------------------------
     return None

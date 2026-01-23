@@ -3,14 +3,10 @@ import librosa
 import whisper
 import torch
 
-# -----------------------------------
-# Load models ONCE
-# -----------------------------------
-
-# Whisper STT (for uploaded audio only)
+# Load Whisper once
 stt_model = whisper.load_model("base")
 
-# Silero VAD (neural VAD)
+# Load Silero VAD once
 vad_model, vad_utils = torch.hub.load(
     repo_or_dir="snakers4/silero-vad",
     model="silero_vad",
@@ -19,60 +15,25 @@ vad_model, vad_utils = torch.hub.load(
 (get_speech_timestamps, _, _, _, _) = vad_utils
 
 
-# -----------------------------------
-# Noise Suppression (librosa DSP)
-# -----------------------------------
-
-def spectral_noise_suppress(
-    audio,
-    n_fft=1024,
-    hop_length=256,
-    noise_percentile=20
-):
-    """
-    Spectral gating using librosa (DSP-based).
-    """
-    # STFT
+# ---------------- Noise Suppression (librosa DSP) ----------------
+def spectral_noise_suppress(audio, n_fft=1024, hop_length=256):
     stft = librosa.stft(audio, n_fft=n_fft, hop_length=hop_length)
     magnitude, phase = np.abs(stft), np.angle(stft)
 
-    # Estimate noise floor from quietest frames
-    noise_floor = np.percentile(
-        magnitude, noise_percentile, axis=1, keepdims=True
-    )
+    noise_floor = np.percentile(magnitude, 20, axis=1, keepdims=True)
+    cleaned_mag = np.maximum(magnitude - noise_floor, 0)
 
-    # Spectral subtraction
-    cleaned_mag = np.maximum(magnitude - noise_floor, 0.0)
-
-    # Reconstruct signal
     cleaned_stft = cleaned_mag * np.exp(1j * phase)
-    cleaned_audio = librosa.istft(
-        cleaned_stft, hop_length=hop_length
-    )
-
-    return cleaned_audio.astype(np.float32)
+    return librosa.istft(cleaned_stft, hop_length=hop_length)
 
 
-# -----------------------------------
-# Full Audio Processing Pipeline
-# -----------------------------------
-
+# ---------------- Full Audio Pipeline ----------------
 def process_audio(file_path: str):
-    """
-    Audio File →
-    Librosa Noise Suppression →
-    Silero VAD →
-    Whisper STT
-    """
-
-    # 1️⃣ Load audio
     audio, sr = librosa.load(file_path, sr=16000, mono=True)
     audio = audio.astype(np.float32)
 
-    # 2️⃣ Noise suppression (DSP)
     clean_audio = spectral_noise_suppress(audio)
 
-    # 3️⃣ Voice Activity Detection (Silero)
     speech_timestamps = get_speech_timestamps(
         clean_audio,
         vad_model,
@@ -81,12 +42,8 @@ def process_audio(file_path: str):
     )
 
     if not speech_timestamps:
-        return {
-            "text": "",
-            "language": None
-        }
+        return {"text": "", "language": None}
 
-    # 4️⃣ Extract only speech segments
     speech_segments = [
         clean_audio[ts["start"]:ts["end"]]
         for ts in speech_timestamps
@@ -94,13 +51,10 @@ def process_audio(file_path: str):
 
     merged_audio = np.concatenate(speech_segments)
 
-    # 5️⃣ Speech-to-Text (Whisper)
+    # 🔤 Whisper AUTO language detection
     result = stt_model.transcribe(
         merged_audio,
-        fp16=False,
-        language="en",
-        task="transcribe",
-        no_speech_threshold=0.3
+        fp16=False
     )
 
     return {
