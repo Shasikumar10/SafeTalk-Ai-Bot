@@ -4,22 +4,24 @@ from sentence_transformers import SentenceTransformer
 
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
 
-
 class RAGStore:
     def __init__(self):
         self.index = None
-        self.chunks = []
+        self.texts = []
 
-    def build(self, documents: list[str]):
-        embeddings = embedder.encode(documents)
-        dim = embeddings.shape[1]
+    def build(self, docs):
+        emb = embedder.encode(docs, normalize_embeddings=True)
+        dim = emb.shape[1]
+        self.index = faiss.IndexFlatIP(dim)
+        self.index.add(emb.astype("float32"))
+        self.texts = docs
 
-        self.index = faiss.IndexFlatL2(dim)
-        self.index.add(np.array(embeddings).astype("float32"))
-        self.chunks = documents
+    def retrieve_with_scores(self, query, k=3):
+        q_emb = embedder.encode([query], normalize_embeddings=True).astype("float32")
+        scores, ids = self.index.search(q_emb, k)
 
-    def retrieve(self, query: str, top_k=2):
-        q_emb = embedder.encode([query]).astype("float32")
-        distances, indices = self.index.search(q_emb, top_k)
-
-        return [self.chunks[i] for i in indices[0]]
+        results = []
+        for i, s in zip(ids[0], scores[0]):
+            if i >= 0:
+                results.append({"text": self.texts[i], "score": float(s)})
+        return results

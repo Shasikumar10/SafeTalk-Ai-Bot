@@ -1,29 +1,53 @@
 from agents.knowledge_builder import build_dynamic_kb
 from rag.rag_store import RAGStore
-from llm.groq_llm import answer_with_context
+from llm.groq_llm import answer_with_context, answer_general
 
+RAG_THRESHOLD = 0.60
 
-def answer_query_with_agentic_rag(query: str):
-    # 1️⃣ Agent builds KB
-    documents = build_dynamic_kb(query)
+def answer_query_hybrid(query: str, trace: dict):
+    docs = build_dynamic_kb(query)
 
-    if not documents:
+    trace["rag"] = {
+        "kb_built": bool(docs),
+        "kb_sources": ["Wikipedia", "DuckDuckGo"] if docs else []
+    }
+
+    if not docs:
+        trace["rag"]["mode"] = "general_llm"
         return {
-            "answer": "I don't know",
-            "sources": []
+            "answer": answer_general(query),
+            "sources": [],
+            "mode": "general_llm"
         }
 
-    # 2️⃣ Build temporary vector store
     store = RAGStore()
-    store.build(documents)
+    store.build(docs)
 
-    # 3️⃣ Retrieve relevant chunks
-    retrieved = store.retrieve(query)
+    retrieved = store.retrieve_with_scores(query)
 
-    # 4️⃣ LLM answers strictly from retrieved context
-    answer = answer_with_context(retrieved, query)
+    if not retrieved:
+        trace["rag"]["mode"] = "general_llm"
+        return {
+            "answer": answer_general(query),
+            "sources": [],
+            "mode": "general_llm"
+        }
 
+    best_score = max(r["score"] for r in retrieved)
+    trace["rag"]["confidence"] = round(best_score, 3)
+
+    if best_score >= RAG_THRESHOLD:
+        context = [r["text"] for r in retrieved]
+        trace["rag"]["mode"] = "rag"
+        return {
+            "answer": answer_with_context(context, query),
+            "sources": context,
+            "mode": "rag"
+        }
+
+    trace["rag"]["mode"] = "general_llm"
     return {
-        "answer": answer,
-        "sources": retrieved
+        "answer": answer_general(query),
+        "sources": [],
+        "mode": "general_llm"
     }
