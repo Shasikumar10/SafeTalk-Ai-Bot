@@ -1,72 +1,243 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>SafeTalk Voice Demo</title>
+  <meta charset="UTF-8" />
+  <title>SafeTalk AI – Voice Assistant</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", Arial, sans-serif;
+      background: linear-gradient(135deg, #1e3a8a, #2563eb);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .app {
+      width: 440px;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 25px 50px rgba(0,0,0,0.25);
+    }
+
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .header h1 {
+      margin: 0;
+      font-size: 22px;
+      color: #1f2937;
+    }
+
+    .header p {
+      margin: 4px 0 0;
+      font-size: 13px;
+      color: #6b7280;
+    }
+
+    .card {
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 8px;
+    }
+
+    button {
+      width: 100%;
+      padding: 10px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: background 0.2s ease;
+    }
+
+    .btn-primary {
+      background: #2563eb;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #1d4ed8;
+    }
+
+    .btn-danger {
+      background: #dc2626;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #b91c1c;
+    }
+
+    .btn-secondary {
+      background: #16a34a;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #15803d;
+    }
+
+    input[type="file"] {
+      width: 100%;
+      font-size: 13px;
+      margin-top: 6px;
+    }
+
+    .status {
+      text-align: center;
+      font-size: 13px;
+      margin-top: 8px;
+      color: #2563eb;
+      min-height: 18px;
+    }
+
+    pre {
+      background: #0f172a;
+      color: #e5e7eb;
+      padding: 12px;
+      border-radius: 8px;
+      font-size: 12px;
+      overflow-x: auto;
+      margin-top: 8px;
+    }
+
+    .footer {
+      text-align: center;
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 8px;
+    }
+  </style>
 </head>
+
 <body>
-  <h2>SafeTalk Voice Assistant</h2>
 
-  <!-- Upload Audio -->
-  <h3>Upload Audio File</h3>
-  <input type="file" id="audioFile" accept="audio/*">
-  <br><br>
-  <button onclick="uploadFile()">Upload & Process</button>
+<div class="app">
+  <div class="header">
+    <h1>SafeTalk AI</h1>
+    <p>Policy-Aware Voice Assistant</p>
+  </div>
 
-  <hr>
+  <!-- LIVE SPEAK -->
+  <div class="card">
+    <div class="card-title">🎙 Live Speak</div>
+    <button class="btn-primary" onclick="startSpeech()">Start Speaking</button>
+    <div class="status" id="status">Idle</div>
+  </div>
 
-  <!-- Record Audio -->
-  <h3>Speak (Live Microphone)</h3>
-  <button onclick="startRecording()">Start Recording</button>
-  <button onclick="stopRecording()">Stop & Send</button>
+  <!-- UPLOAD AUDIO -->
+  <div class="card">
+    <div class="card-title">📁 Upload Audio</div>
+    <input type="file" id="audioFile" accept="audio/*" />
+    <button class="btn-secondary" onclick="uploadAudio()">Upload & Process</button>
+  </div>
 
-  <h3>Response</h3>
-  <pre id="output"></pre>
+  <!-- TRANSCRIPT -->
+  <div class="card">
+    <div class="card-title">📝 Transcript</div>
+    <pre id="transcript">—</pre>
+  </div>
 
-  <script>
-    let mediaRecorder;
-    let audioChunks = [];
+  <!-- RESPONSE -->
+  <div class="card">
+    <div class="card-title">🤖 System Response</div>
+    <pre id="response">—</pre>
+  </div>
 
-    async function uploadFile() {
-      const fileInput = document.getElementById("audioFile");
-      if (!fileInput.files.length) {
-        alert("Select an audio file");
-        return;
-      }
-      sendAudio(fileInput.files[0]);
-    }
+  <div class="footer">
+    Built for real-world voice safety & intelligence
+  </div>
+</div>
 
-    async function startRecording() {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorder = new MediaRecorder(stream);
-      audioChunks = [];
+<script>
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
+}
 
-      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-      mediaRecorder.start();
-    }
+function startSpeech() {
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
 
-    async function stopRecording() {
-      mediaRecorder.stop();
+  if (!SpeechRecognition) {
+    alert("Google Web Speech API not supported. Use Chrome or Edge.");
+    return;
+  }
 
-      mediaRecorder.onstop = async () => {
-        const blob = new Blob(audioChunks, { type: "audio/webm" });
-        sendAudio(blob);
-      };
-    }
+  const recognition = new SpeechRecognition();
+  recognition.lang = "en-US";
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
 
-    async function sendAudio(audioBlob) {
-      const output = document.getElementById("output");
+  setStatus("Listening…");
 
-      const formData = new FormData();
-      formData.append("file", audioBlob);
+  recognition.onresult = async (event) => {
+    const text = event.results[0][0].transcript;
+    document.getElementById("transcript").textContent = text;
+    setStatus("Processing…");
 
-      const response = await fetch("http://127.0.0.1:8000/process-audio", {
-        method: "POST",
-        body: formData
-      });
+    const res = await fetch("http://127.0.0.1:8000/process-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    });
 
-      const data = await response.json();
-      output.textContent = JSON.stringify(data, null, 2);
-    }
-  </script>
+    const data = await res.json();
+    document.getElementById("response").textContent =
+      JSON.stringify(data, null, 2);
+
+    setStatus("Done");
+  };
+
+  recognition.onerror = (e) => {
+    setStatus("Error: " + e.error);
+  };
+
+  recognition.start();
+}
+
+async function uploadAudio() {
+  const fileInput = document.getElementById("audioFile");
+  if (!fileInput.files.length) {
+    alert("Please select an audio file.");
+    return;
+  }
+
+  setStatus("Uploading audio…");
+
+  const formData = new FormData();
+  formData.append("file", fileInput.files[0]);
+
+  const res = await fetch("http://127.0.0.1:8000/process-audio", {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+  document.getElementById("response").textContent =
+    JSON.stringify(data, null, 2);
+
+  setStatus("Done");
+}
+</script>
+
 </body>
 </html>

@@ -1,8 +1,8 @@
 """
 3.6 Language Validator
 ---------------------
-Checks whether the detected language from STT
-is supported by the system.
+Validates detected language with robustness
+for short or low-confidence utterances.
 """
 
 SUPPORTED_LANGUAGES = {
@@ -10,32 +10,21 @@ SUPPORTED_LANGUAGES = {
 }
 
 def validate_language(stt_output: dict):
-    """
-    Input:
-        stt_output = {
-            "text": "...",
-            "language": "en"
-        }
-
-    Output (allowed):
-        {
-            "allowed": True
-        }
-
-    Output (blocked):
-        {
-            "allowed": False,
-            "response": {...}
-        }
-    """
-
+    text = stt_output.get("text", "").strip()
     language = stt_output.get("language")
+
+    # ✅ FIX: Allow short English utterances with unknown language
+    if language is None and text:
+        return {
+            "allowed": True,
+            "assumed_language": "en"
+        }
 
     if language not in SUPPORTED_LANGUAGES:
         return {
             "allowed": False,
             "response": {
-                "error": "unsupported_language",
+                "response_type": "unsupported_language",
                 "message": (
                     "I currently support English only. "
                     "Please ask your question in English."
