@@ -5,6 +5,7 @@ import tempfile
 import os
 import noisereduce as nr
 import soundfile as sf
+import speech_recognition as sr
 
 # =========================
 # Load Silero VAD
@@ -102,3 +103,25 @@ def process_audio(file_path: str, sample_rate: int = 16000):
     sf.write(tmp_wav.name, speech_audio.numpy(), sr)
 
     return tmp_wav.name
+
+recognizer = sr.Recognizer()
+
+
+def transcribe_audio(audio_path, language="en-IN"):
+    """
+    High-accuracy transcription using Google Web Speech API
+    """
+    with sr.AudioFile(audio_path) as source:
+        audio_data = recognizer.record(source)
+
+    try:
+        text = recognizer.recognize_google(
+            audio_data,
+            language=language,
+            show_all=False
+        )
+        return text
+    except sr.UnknownValueError:
+        return ""
+    except sr.RequestError as e:
+        raise RuntimeError(f"STT error: {e}")

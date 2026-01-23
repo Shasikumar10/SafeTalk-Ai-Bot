@@ -13,3 +13,5 @@ silero-vad
 detoxify
 python-dotenv
 groq
+SpeechRecognition
+pyaudio

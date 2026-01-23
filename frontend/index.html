@@ -3,36 +3,129 @@
 <head>
   <meta charset="UTF-8" />
   <title>SafeTalk AI</title>
-  <link rel="stylesheet" href="style.css" />
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: radial-gradient(circle at top, #0f172a, #020617);
+      color: #e5e7eb;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .card {
+      background: #020617;
+      padding: 30px;
+      border-radius: 14px;
+      width: 380px;
+      text-align: center;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+
+    button {
+      background: #2563eb;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 8px;
+      color: white;
+      cursor: pointer;
+      font-size: 15px;
+    }
+
+    button:disabled {
+      background: #475569;
+      cursor: not-allowed;
+    }
+
+    .answer {
+      margin-top: 20px;
+      text-align: left;
+    }
+
+    .tag {
+      display: inline-block;
+      background: #16a34a;
+      padding: 4px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-top: 6px;
+    }
+  </style>
 </head>
 <body>
-  <div class="app">
-    <h1>🛡️ SafeTalk AI</h1>
-    <p class="subtitle">Voice-first, safe, explainable AI assistant</p>
 
-    <div class="controls">
-      <button id="recordBtn">🎙️ Start Recording</button>
-      <span id="status">Idle</span>
-    </div>
+<div class="card">
+  <h2>🛡 SafeTalk AI</h2>
+  <p>Voice-first, safe, explainable assistant</p>
 
-    <div class="result hidden" id="resultBox">
-      <h3>Answer</h3>
-      <p id="answerText"></p>
+  <button id="recordBtn">🎤 Start Recording</button>
 
-      <div class="meta">
-        <span id="modeTag"></span>
-        <span id="confidenceTag"></span>
-      </div>
-
-      <details>
-        <summary>Sources</summary>
-        <ul id="sourcesList"></ul>
-      </details>
-
-      <button id="speakBtn">🔊 Speak Answer</button>
-    </div>
+  <div class="answer">
+    <h4>Answer</h4>
+    <p id="answerText">—</p>
+    <span id="modeTag" class="tag" style="display:none;"></span>
   </div>
+</div>
 
-  <script src="app.js"></script>
+<script>
+let recorder;
+let audioChunks = [];
+
+const recordBtn = document.getElementById("recordBtn");
+const answerText = document.getElementById("answerText");
+const modeTag = document.getElementById("modeTag");
+
+function speak(text) {
+  if (!text) return;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = "en-IN";
+  utterance.rate = 0.95;
+  window.speechSynthesis.speak(utterance);
+}
+
+recordBtn.onclick = async () => {
+  recordBtn.disabled = true;
+  answerText.innerText = "Listening…";
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  recorder = new MediaRecorder(stream);
+  audioChunks = [];
+
+  recorder.ondataavailable = e => audioChunks.push(e.data);
+
+  recorder.onstop = async () => {
+    const blob = new Blob(audioChunks, { type: "audio/wav" });
+    const formData = new FormData();
+    formData.append("file", blob, "speech.wav");
+
+    answerText.innerText = "Processing…";
+
+    const res = await fetch("http://127.0.0.1:8000/process-audio", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+
+    answerText.innerText = data.answer || "No response.";
+    modeTag.style.display = "inline-block";
+    modeTag.innerText = data.mode || "response";
+
+    // 🔊 AUTO SPEAK
+    speak(data.answer);
+
+    recordBtn.disabled = false;
+  };
+
+  recorder.start();
+
+  // ⏱️ Fixed max duration (prevents infinite recording)
+  setTimeout(() => recorder.stop(), 6000);
+};
+</script>
+
 </body>
 </html>

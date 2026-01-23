@@ -4,95 +4,104 @@ from pydantic import BaseModel
 import tempfile
 import os
 
-from audio_pipeline import process_audio
-from language_validator import validate_language
-from greeting_detector import detect_greeting
-from safety_guard import safety_check
-from intent_engine import detect_intent
-from standard_response_mapper import map_response
+from audio_pipeline import process_audio, transcribe_audio
 from rag.rag_engine import answer_query_hybrid
-from trace import init_trace
 
-app = FastAPI(title="SafeTalk AI")
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
-    allow_headers=["*"]
+    allow_headers=["*"],
 )
 
-class TextInput(BaseModel):
+
+# -------------------------
+# Utilities
+# -------------------------
+def init_trace():
+    return {
+        "audio": {},
+        "stt": {},
+        "rag": {},
+    }
+
+
+def normalize_query(text: str) -> str:
+    fillers = ["uh", "um", "like", "you know"]
+    for f in fillers:
+        text = text.replace(f, "")
+    return text.strip()
+
+
+# -------------------------
+# Request Models
+# -------------------------
+class TextPayload(BaseModel):
     text: str
 
-@app.get("/")
-def health():
-    return {"status": "SafeTalk backend running"}
 
-@app.post("/process-text")
-async def process_text(payload: TextInput):
-    return handle_text_pipeline({"text": payload.text, "language": None})
-
+# -------------------------
+# Routes
+# -------------------------
 @app.post("/process-audio")
 async def process_audio_endpoint(file: UploadFile = File(...)):
-    with tempfile.NamedTemporaryFile(delete=False) as tmp:
-        tmp.write(await file.read())
-        path = tmp.name
-    try:
-        stt = process_audio(path)
-        return handle_text_pipeline(stt)
-    finally:
-        if os.path.exists(path):
-            os.remove(path)
-
-def handle_text_pipeline(stt_result: dict):
     trace = init_trace()
-    text = stt_result.get("text", "")
 
-    # Language validation
-    validation = validate_language(stt_result)
-    trace["language_validation"] = {
-    "detected": validation["language"],
-    "allowed": validation["allowed"],
-    "source": "browser-mic" if stt_result.get("language") is None else "stt-engine"
-}
+    # Save uploaded audio
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+        tmp.write(await file.read())
+        audio_path = tmp.name
+
+    try:
+        # Audio pipeline (noise + VAD)
+        clean_audio_path = process_audio(audio_path)
+
+        if not clean_audio_path:
+            return {
+                "mode": "stt_low_confidence",
+                "answer": "I didn’t catch that clearly. Could you please repeat?",
+                "sources": [],
+            }
+
+        # Speech → Text
+        text = transcribe_audio(clean_audio_path, language="en-IN")
+        trace["stt"]["text"] = text
+
+        # Confidence guard
+        if not text or len(text.split()) < 3:
+            return {
+                "mode": "stt_low_confidence",
+                "answer": "I didn’t catch that clearly. Could you please repeat?",
+                "sources": [],
+            }
+
+        # Normalize
+        text = normalize_query(text)
+
+        # RAG / LLM
+        result = answer_query_hybrid(text, trace)
+        return result
+
+    finally:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
 
 
-    if not validation["allowed"]:
-        return {"response": validation["response"], "trace": trace}
+@app.post("/process-text")
+async def process_text(payload: TextPayload):
+    trace = init_trace()
 
-    # Safety
-    safety = safety_check(text)
-    trace["safety"] = {"triggered": bool(safety)}
+    text = payload.text.strip()
+    if not text:
+        return {
+            "mode": "empty",
+            "answer": "Please say or type something.",
+            "sources": [],
+        }
 
-    # Intent
-    intent = detect_intent(text)
-    trace["intent"] = intent
-
-    # Standard responses
-    standard = map_response(
-        greeting=detect_greeting(text),
-        safety=safety,
-        intent=intent,
-        language=validation["language"]
-    )
-
-    trace["standard_response"] = {"triggered": bool(standard)}
-
-    if standard:
-        return {"response": standard, "trace": trace}
-
-    # Hybrid RAG
+    text = normalize_query(text)
     result = answer_query_hybrid(text, trace)
-    trace["rag"] = {
-        "mode": result.get("mode"),
-        "confidence": result.get("confidence")
-    }
-
-    return {
-        "question": text,
-        "answer": result["answer"],
-        "sources": result.get("sources", []),
-        "mode": result.get("mode"),
-        "trace": trace
-    }
+    return result
