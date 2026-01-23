@@ -12,3 +12,8 @@ scikit-learn
 transformers
 detoxify
 fasttext-wheel
+faiss-cpu
+python-dotenv
+groq
+requests
+beautifulsoup4

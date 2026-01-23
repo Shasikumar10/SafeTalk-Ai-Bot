@@ -10,6 +10,9 @@ from greeting_detector import detect_greeting
 from safety_guard import safety_check
 from intent_engine import detect_intent
 from standard_response_mapper import map_response
+from rag_engine import answer_with_rag
+from rag.rag_engine import answer_query_with_agentic_rag
+
 
 app = FastAPI()
 
@@ -71,3 +74,12 @@ if standard:
         "language": validation["language"],
         "intent_analysis": intent
     }
+
+# If no standard response triggered → use RAG
+rag_result = answer_query_with_agentic_rag(text)
+
+return {
+    "question": text,
+    "answer": rag_result["answer"],
+    "sources": rag_result["sources"]
+}
