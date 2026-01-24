@@ -89,6 +89,7 @@ button {
 let recorder;
 let mediaStream;
 let isRecording = false;
+let greeted = false;
 
 // Audio analysis
 let audioContext;
@@ -96,16 +97,41 @@ let analyser;
 let silenceStart = null;
 let recordStartTime = null;
 
-// 🔑 TUNING PARAMETERS (IMPORTANT)
-const SILENCE_THRESHOLD = 0.015;   // energy threshold
-const SILENCE_DURATION = 2500;     // ms of silence
-const MIN_RECORD_TIME  = 2500;     // ms minimum speech
+const SILENCE_THRESHOLD = 0.015;
+const SILENCE_DURATION = 2500;
+const MIN_RECORD_TIME  = 2500;
 
 const recordBtn = document.getElementById("recordBtn");
 const answerText = document.getElementById("answerText");
 const waveform = document.getElementById("waveform");
 
-/* ---------- Speak in detected language ---------- */
+/* ---------- HARD-CODED GREETINGS ---------- */
+const GREETING_KEYWORDS = [
+  "hi",
+  "hello",
+  "hey",
+  "good morning",
+  "good evening"
+];
+
+function detectGreeting(text) {
+  text = text.toLowerCase();
+  return GREETING_KEYWORDS.some(word => text.includes(word));
+}
+
+function speakGreeting() {
+  const utter = new SpeechSynthesisUtterance(
+    "Hello! I am SafeTalk AI. How can I help you today?"
+  );
+  utter.lang = "en-IN";
+  utter.rate = 1;
+  utter.pitch = 1;
+
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utter);
+}
+
+/* ---------- Speak answer ---------- */
 function speak(text, lang) {
   const utter = new SpeechSynthesisUtterance(text);
   utter.lang =
@@ -117,7 +143,7 @@ function speak(text, lang) {
   window.speechSynthesis.speak(utter);
 }
 
-/* ---------- Monitor silence (ENERGY-BASED VAD) ---------- */
+/* ---------- Monitor silence ---------- */
 function monitorSilence() {
   if (!isRecording) return;
 
@@ -134,13 +160,9 @@ function monitorSilence() {
   if (rms < SILENCE_THRESHOLD) {
     if (!silenceStart) silenceStart = Date.now();
 
-    const silenceElapsed = Date.now() - silenceStart;
-    const totalElapsed = Date.now() - recordStartTime;
-
-    // ✅ Only auto-stop if BOTH conditions are met
     if (
-      silenceElapsed > SILENCE_DURATION &&
-      totalElapsed > MIN_RECORD_TIME
+      Date.now() - silenceStart > SILENCE_DURATION &&
+      Date.now() - recordStartTime > MIN_RECORD_TIME
     ) {
       stopRecording();
       return;
@@ -155,6 +177,8 @@ function monitorSilence() {
 /* ---------- Start recording ---------- */
 async function startRecording() {
   isRecording = true;
+  greeted = false;
+
   silenceStart = null;
   recordStartTime = Date.now();
 
@@ -164,7 +188,6 @@ async function startRecording() {
 
   mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
-  // Setup analyser
   audioContext = new AudioContext();
   analyser = audioContext.createAnalyser();
   analyser.fftSize = 2048;
@@ -182,7 +205,6 @@ async function startRecording() {
     mediaStream.getTracks().forEach(t => t.stop());
     audioContext.close();
 
-    // If no audio, ignore
     if (chunks.length === 0) return;
 
     const blob = new Blob(chunks, { type: "audio/wav" });
@@ -197,6 +219,14 @@ async function startRecording() {
     });
 
     const data = await res.json();
+
+    // ✅ GREETING DETECTION (NO LLM)
+    if (!greeted && detectGreeting(data.text)) {
+      greeted = true;
+      speakGreeting();
+      answerText.innerText = "👋 Greeting detected";
+      return;
+    }
 
     answerText.innerText = data.answer;
     speak(data.answer, data.language);
@@ -216,10 +246,9 @@ function stopRecording() {
   recorder.stop();
 }
 
-/* ---------- Button behavior ---------- */
+/* ---------- Button ---------- */
 recordBtn.onclick = () => {
   if (isRecording) {
-    // Stop current and immediately start fresh
     recorder.stop();
     setTimeout(startRecording, 200);
   } else {
