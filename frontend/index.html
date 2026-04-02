@@ -1,261 +1,72 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>SafeTalk AI</title>
-
-<style>
-body {
-  margin: 0;
-  font-family: Arial, sans-serif;
-  background: radial-gradient(circle at top, #0f172a, #020617);
-  color: #e5e7eb;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-}
-
-.card {
-  background: #020617;
-  padding: 30px;
-  border-radius: 14px;
-  width: 440px;
-  box-shadow: 0 20px 40px rgba(0,0,0,0.6);
-  text-align: center;
-}
-
-button {
-  background: #2563eb;
-  border: none;
-  padding: 12px 20px;
-  border-radius: 8px;
-  color: white;
-  font-size: 15px;
-  cursor: pointer;
-}
-
-#waveform {
-  display: none;
-  justify-content: center;
-  gap: 4px;
-  margin-top: 12px;
-  height: 30px;
-}
-
-.bar {
-  width: 6px;
-  background: #38bdf8;
-  animation: bounce 1s infinite ease-in-out;
-}
-
-.bar:nth-child(2) { animation-delay: 0.1s }
-.bar:nth-child(3) { animation-delay: 0.2s }
-.bar:nth-child(4) { animation-delay: 0.3s }
-.bar:nth-child(5) { animation-delay: 0.4s }
-
-@keyframes bounce {
-  0%,100% { height: 8px }
-  50% { height: 28px }
-}
-
-.answer {
-  margin-top: 18px;
-  text-align: left;
-}
-</style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SafeTalk AI | Secure Voice Intelligence</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
 </head>
-
 <body>
+    <div class="background-glow"></div>
+    
+    <div class="container">
+        <header>
+            <div class="logo">
+                <span class="shield-icon">🛡️</span>
+                <h1>SafeTalk AI</h1>
+            </div>
+            <p class="subtitle">Secure, Multi-lingual Voice Assistant</p>
+        </header>
 
-<div class="card">
-  <h2>🛡 SafeTalk AI</h2>
-  <p>Speak naturally — auto language & auto stop</p>
+        <main>
+            <div class="voice-center">
+                <div id="orb" class="orb"></div>
+                <div id="waveform" class="waveform hidden">
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                    <div class="bar"></div>
+                </div>
+            </div>
 
-  <button id="recordBtn">🎤 Start Recording</button>
+            <div class="controls">
+                <button id="recordBtn" class="primary-btn">
+                    <span class="btn-icon">🎤</span>
+                    <span id="btnText">Start Recording</span>
+                </button>
+                <button id="stopBtn" class="secondary-btn" disabled>
+                    <span class="btn-icon">🛑</span>
+                    <span>Stop</span>
+                </button>
+            </div>
 
-  <div id="waveform">
-    <div class="bar"></div><div class="bar"></div>
-    <div class="bar"></div><div class="bar"></div>
-    <div class="bar"></div>
-  </div>
+            <div id="status" class="status-text">Ready to listen</div>
 
-  <div class="answer">
-    <p id="answerText">—</p>
-  </div>
-</div>
+            <div id="resultCard" class="result-card hidden">
+                <div class="card-section">
+                    <h3>You said:</h3>
+                    <p id="transcriptText"></p>
+                </div>
+                <div class="divider"></div>
+                <div class="card-section">
+                    <div class="response-header">
+                        <h3>SafeTalk Response</h3>
+                        <span id="langTag" class="badge">EN</span>
+                    </div>
+                    <p id="answerText"></p>
+                </div>
+            </div>
+        </main>
 
-<script>
-let recorder;
-let mediaStream;
-let isRecording = false;
-let greeted = false;
+        <footer>
+            <p>&copy; 2026 SafeTalk AI. All rights reserved.</p>
+        </footer>
+    </div>
 
-// Audio analysis
-let audioContext;
-let analyser;
-let silenceStart = null;
-let recordStartTime = null;
-
-const SILENCE_THRESHOLD = 0.015;
-const SILENCE_DURATION = 2500;
-const MIN_RECORD_TIME  = 2500;
-
-const recordBtn = document.getElementById("recordBtn");
-const answerText = document.getElementById("answerText");
-const waveform = document.getElementById("waveform");
-
-/* ---------- HARD-CODED GREETINGS ---------- */
-const GREETING_KEYWORDS = [
-  "hi",
-  "hello",
-  "hey",
-  "good morning",
-  "good evening"
-];
-
-function detectGreeting(text) {
-  text = text.toLowerCase();
-  return GREETING_KEYWORDS.some(word => text.includes(word));
-}
-
-function speakGreeting() {
-  const utter = new SpeechSynthesisUtterance(
-    "Hello! I am SafeTalk AI. How can I help you today?"
-  );
-  utter.lang = "en-IN";
-  utter.rate = 1;
-  utter.pitch = 1;
-
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utter);
-}
-
-/* ---------- Speak answer ---------- */
-function speak(text, lang) {
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.lang =
-    lang === "te" ? "te-IN" :
-    lang === "hi" ? "hi-IN" :
-    "en-IN";
-
-  window.speechSynthesis.cancel();
-  window.speechSynthesis.speak(utter);
-}
-
-/* ---------- Monitor silence ---------- */
-function monitorSilence() {
-  if (!isRecording) return;
-
-  const buffer = new Uint8Array(analyser.fftSize);
-  analyser.getByteTimeDomainData(buffer);
-
-  let sum = 0;
-  for (let i = 0; i < buffer.length; i++) {
-    const v = (buffer[i] - 128) / 128;
-    sum += v * v;
-  }
-  const rms = Math.sqrt(sum / buffer.length);
-
-  if (rms < SILENCE_THRESHOLD) {
-    if (!silenceStart) silenceStart = Date.now();
-
-    if (
-      Date.now() - silenceStart > SILENCE_DURATION &&
-      Date.now() - recordStartTime > MIN_RECORD_TIME
-    ) {
-      stopRecording();
-      return;
-    }
-  } else {
-    silenceStart = null;
-  }
-
-  requestAnimationFrame(monitorSilence);
-}
-
-/* ---------- Start recording ---------- */
-async function startRecording() {
-  isRecording = true;
-  greeted = false;
-
-  silenceStart = null;
-  recordStartTime = Date.now();
-
-  recordBtn.innerText = "🎤 Restart Recording";
-  waveform.style.display = "flex";
-  answerText.innerText = "Listening…";
-
-  mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-  audioContext = new AudioContext();
-  analyser = audioContext.createAnalyser();
-  analyser.fftSize = 2048;
-
-  const source = audioContext.createMediaStreamSource(mediaStream);
-  source.connect(analyser);
-
-  recorder = new MediaRecorder(mediaStream);
-  const chunks = [];
-
-  recorder.ondataavailable = e => chunks.push(e.data);
-
-  recorder.onstop = async () => {
-    waveform.style.display = "none";
-    mediaStream.getTracks().forEach(t => t.stop());
-    audioContext.close();
-
-    if (chunks.length === 0) return;
-
-    const blob = new Blob(chunks, { type: "audio/wav" });
-    const formData = new FormData();
-    formData.append("file", blob);
-
-    answerText.innerText = "Processing…";
-
-    const res = await fetch("http://127.0.0.1:8000/process-audio", {
-      method: "POST",
-      body: formData
-    });
-
-    const data = await res.json();
-
-    // ✅ GREETING DETECTION (NO LLM)
-    if (!greeted && detectGreeting(data.text)) {
-      greeted = true;
-      speakGreeting();
-      answerText.innerText = "👋 Greeting detected";
-      return;
-    }
-
-    answerText.innerText = data.answer;
-    speak(data.answer, data.language);
-
-    recordBtn.innerText = "🎤 Start Recording";
-    isRecording = false;
-  };
-
-  recorder.start();
-  monitorSilence();
-}
-
-/* ---------- Stop recording ---------- */
-function stopRecording() {
-  if (!isRecording) return;
-  isRecording = false;
-  recorder.stop();
-}
-
-/* ---------- Button ---------- */
-recordBtn.onclick = () => {
-  if (isRecording) {
-    recorder.stop();
-    setTimeout(startRecording, 200);
-  } else {
-    startRecording();
-  }
-};
-</script>
-
+    <script src="app.js"></script>
 </body>
 </html>

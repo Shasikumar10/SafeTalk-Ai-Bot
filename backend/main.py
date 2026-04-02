@@ -6,6 +6,7 @@ import os
 
 from audio_pipeline import process_audio, transcribe_audio
 from rag.rag_engine import answer_query_hybrid
+from safety_guard import safety_check
 
 app = FastAPI()
 
@@ -70,6 +71,18 @@ async def process_audio_endpoint(file: UploadFile = File(...)):
         text = normalize_query(text)
         language = detect_language(text)
 
+        # -------------------------
+        # Safety Check
+        # -------------------------
+        safety_result = safety_check(text)
+        if safety_result:
+            return {
+                "answer": safety_result["message"],
+                "language": language,
+                "mode": "safety_block",
+                "text": text
+            }
+
         # RAG + LLM
         result = answer_query_hybrid(
             query=text,
@@ -77,6 +90,7 @@ async def process_audio_endpoint(file: UploadFile = File(...)):
         )
 
         result["language"] = language
+        result["text"] = text
         return result
 
     finally:

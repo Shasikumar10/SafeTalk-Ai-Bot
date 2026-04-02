@@ -24,8 +24,9 @@ def answer_general(prompt: str) -> str:
     return res.choices[0].message.content.strip()
 
 
-def answer_with_context(context, question: str) -> str:
+def answer_with_context(context, question: str, instruction: str = "") -> str:
     prompt = f"""
+{instruction}
 Answer using ONLY the context below.
 If not found, say "I don't know".
 
@@ -41,3 +42,8 @@ Question:
         temperature=0.2,
     )
     return res.choices[0].message.content.strip()
+
+
+
+
+
