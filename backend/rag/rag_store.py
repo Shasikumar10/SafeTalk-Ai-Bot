@@ -1,8 +1,14 @@
 import faiss
 import numpy as np
-from sentence_transformers import SentenceTransformer
+_embedder = None
 
-embedder = SentenceTransformer("all-MiniLM-L6-v2")
+def get_embedder():
+    global _embedder
+    if _embedder is None:
+        print("Loading Embedding Model (SentenceTransformers)...")
+        from sentence_transformers import SentenceTransformer
+        _embedder = SentenceTransformer("all-MiniLM-L6-v2")
+    return _embedder
 
 class RAGStore:
     def __init__(self):
@@ -10,6 +16,7 @@ class RAGStore:
         self.texts = []
 
     def build(self, docs):
+        embedder = get_embedder()
         emb = embedder.encode(docs, normalize_embeddings=True)
         dim = emb.shape[1]
         self.index = faiss.IndexFlatIP(dim)
@@ -17,6 +24,7 @@ class RAGStore:
         self.texts = docs
 
     def retrieve_with_scores(self, query, k=3):
+        embedder = get_embedder()
         q_emb = embedder.encode([query], normalize_embeddings=True).astype("float32")
         scores, ids = self.index.search(q_emb, k)
 

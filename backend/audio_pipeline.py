@@ -11,20 +11,19 @@ from dotenv import load_dotenv
 load_dotenv(override=True)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-# Load Silero VAD
-vad_model, vad_utils = torch.hub.load(
-    repo_or_dir="snakers4/silero-vad",
-    model="silero_vad",
-    force_reload=False
-)
+_vad_model = None
+_vad_utils = None
 
-(
-    get_speech_timestamps,
-    save_audio,
-    read_audio,
-    VADIterator,
-    collect_chunks
-) = vad_utils
+def get_vad_model():
+    global _vad_model, _vad_utils
+    if _vad_model is None:
+        print("Loading VAD Model (Silero)...")
+        _vad_model, _vad_utils = torch.hub.load(
+            repo_or_dir="snakers4/silero-vad",
+            model="silero_vad",
+            force_reload=False
+        )
+    return _vad_model, _vad_utils
 
 
 # Merge nearby speech segments
@@ -67,6 +66,10 @@ def process_audio(file_path: str, sample_rate: int = 16000):
 
     #  Apply AI noise reduction to clean static/hums
     audio = nr.reduce_noise(y=audio, sr=sr, prop_decrease=0.85)
+
+    # 3. Voice Activity Detection (Lazy Load)
+    vad_model, vad_utils = get_vad_model()
+    get_speech_timestamps, _, _, _, collect_chunks = vad_utils
 
     # Convert to torch tensor for VAD
     audio_tensor = torch.from_numpy(audio).float()
