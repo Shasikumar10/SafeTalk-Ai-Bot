@@ -5,16 +5,13 @@ import tempfile
 import os
 import noisereduce as nr
 import soundfile as sf
-import speech_recognition as sr
 from groq import Groq
 from dotenv import load_dotenv
 
 load_dotenv(override=True)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
-# =========================
 # Load Silero VAD
-# =========================
 vad_model, vad_utils = torch.hub.load(
     repo_or_dir="snakers4/silero-vad",
     model="silero_vad",
@@ -30,9 +27,7 @@ vad_model, vad_utils = torch.hub.load(
 ) = vad_utils
 
 
-# =========================
 # Merge nearby speech segments
-# =========================
 def merge_segments(segments, max_gap=0.8):
     """
     Merge speech segments if silence gap is small.
@@ -53,10 +48,7 @@ def merge_segments(segments, max_gap=0.8):
     return merged
 
 
-
-# =========================
 # Main audio processing pipeline
-# =========================
 def process_audio(file_path: str, sample_rate: int = 16000):
     """
     Steps:
