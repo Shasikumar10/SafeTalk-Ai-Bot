@@ -6,7 +6,12 @@ import os
 import noisereduce as nr
 import soundfile as sf
 import speech_recognition as sr
+from groq import Groq
+from dotenv import load_dotenv
 
+load_dotenv(override=True)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+groq_client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 # =========================
 # Load Silero VAD
 # =========================
@@ -48,6 +53,7 @@ def merge_segments(segments, max_gap=0.8):
     return merged
 
 
+
 # =========================
 # Main audio processing pipeline
 # =========================
@@ -61,41 +67,37 @@ def process_audio(file_path: str, sample_rate: int = 16000):
     5. Return clean speech audio
     """
 
-    # 1️⃣ Load audio
+    # 1Load audio
     audio, sr = librosa.load(file_path, sr=sample_rate, mono=True)
+    
+    # Normalize audio
+    audio = librosa.util.normalize(audio)
 
-    # 2️⃣ Noise suppression
-    reduced_noise = nr.reduce_noise(
-        y=audio,
-        sr=sr,
-        prop_decrease=0.9
-    )
+    #  Apply AI noise reduction to clean static/hums
+    audio = nr.reduce_noise(y=audio, sr=sr, prop_decrease=0.85)
 
     # Convert to torch tensor for VAD
-    audio_tensor = torch.from_numpy(reduced_noise).float()
+    audio_tensor = torch.from_numpy(audio).float()
 
-    # 3️⃣ Voice Activity Detection (tuned)
+    #  Voice Activity Detection (tuned for sensitivity)
     speech_timestamps = get_speech_timestamps(
         audio_tensor,
         vad_model,
-        threshold=0.3,                  # less aggressive
-        min_speech_duration_ms=500,     # wait before cutting
-        min_silence_duration_ms=800     # allow pauses
+        threshold=0.2,                   
+        min_speech_duration_ms=250,      
+        min_silence_duration_ms=1000      
     )
 
     if not speech_timestamps:
-        return None  # No speech detected
+        return None  
 
-    # 4️⃣ MERGE SEGMENTS (THIS IS THE KEY FIX)
     speech_timestamps = merge_segments(speech_timestamps)
 
-    # 5️⃣ Collect speech chunks
     speech_audio = collect_chunks(
         speech_timestamps,
         audio_tensor
     )
 
-    # Save processed speech to temp WAV
     tmp_wav = tempfile.NamedTemporaryFile(
         delete=False,
         suffix=".wav"
@@ -104,24 +106,19 @@ def process_audio(file_path: str, sample_rate: int = 16000):
 
     return tmp_wav.name
 
-recognizer = sr.Recognizer()
-
-
 def transcribe_audio(audio_path, language="en-IN"):
     """
-    High-accuracy transcription using Google Web Speech API
+    Robust transcription using Groq Whisper API
     """
-    with sr.AudioFile(audio_path) as source:
-        audio_data = recognizer.record(source)
-
+    if not groq_client: return ""
     try:
-        text = recognizer.recognize_google(
-            audio_data,
-            language=language,
-            show_all=False
-        )
-        return text
-    except sr.UnknownValueError:
+        with open(audio_path, "rb") as file:
+            transcription = groq_client.audio.transcriptions.create(
+                file=(audio_path, file.read()),
+                model="whisper-large-v3",
+                response_format="json"
+            )
+        return transcription.text.strip()
+    except Exception as e:
+        print(f"Groq Whisper error: {e}")
         return ""
-    except sr.RequestError as e:
-        raise RuntimeError(f"STT error: {e}")

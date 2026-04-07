@@ -7,7 +7,6 @@ SUPPORTED_LANGUAGES = {
 def validate_language(stt_result: dict):
     detected = stt_result.get("language")
 
-    # ✅ FIX: live mic does not provide language → assume English
     if detected is None:
         detected = "en"
 

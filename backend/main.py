@@ -1,12 +1,17 @@
-from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-import tempfile
 import os
+import io
+import tempfile
+from pydub import AudioSegment
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 
 from audio_pipeline import process_audio, transcribe_audio
-from rag.rag_engine import answer_query_hybrid
+from language_validator import validate_language
+from intent_engine import detect_intent
+from greeting_detector import detect_greeting
 from safety_guard import safety_check
+from standard_response_mapper import map_response
+from rag.rag_engine import answer_query_hybrid
 
 app = FastAPI()
 
@@ -19,9 +24,6 @@ app.add_middleware(
 )
 
 
-# -------------------------
-# Language detection
-# -------------------------
 def detect_language(text: str) -> str:
     for ch in text:
         if "\u0C00" <= ch <= "\u0C7F":
@@ -31,9 +33,6 @@ def detect_language(text: str) -> str:
     return "en"
 
 
-# -------------------------
-# Normalize query
-# -------------------------
 def normalize_query(text: str) -> str:
     fillers = ["uh", "um", "like", "you know"]
     for f in fillers:
@@ -41,16 +40,27 @@ def normalize_query(text: str) -> str:
     return text.strip()
 
 
-# -------------------------
-# API
-# -------------------------
 @app.post("/process-audio")
 async def process_audio_endpoint(file: UploadFile = File(...)):
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        tmp.write(await file.read())
-        audio_path = tmp.name
+    content = await file.read()
+    if not content:
+        return {"answer": "No audio data received.", "mode": "error"}
 
+    audio_path = None
     try:
+        # Load audio from memory using BytesIO
+        try:
+            audio = AudioSegment.from_file(io.BytesIO(content))
+        except Exception as e:
+            print(f"Error loading audio: {e}")
+            return {"answer": "Error reading audio file format.", "mode": "error"}
+        
+        audio = audio.set_frame_rate(16000).set_channels(1)
+        
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
+            audio.export(tmp.name, format="wav")
+            audio_path = tmp.name
+
         clean_audio = process_audio(audio_path)
         if not clean_audio:
             return {
@@ -61,7 +71,7 @@ async def process_audio_endpoint(file: UploadFile = File(...)):
 
         # STT
         text = transcribe_audio(clean_audio)
-        if not text or len(text.split()) < 2:
+        if not text:
             return {
                 "answer": "I couldn’t hear you clearly. Please try again.",
                 "language": "en",
@@ -71,19 +81,40 @@ async def process_audio_endpoint(file: UploadFile = File(...)):
         text = normalize_query(text)
         language = detect_language(text)
 
-        # -------------------------
-        # Safety Check
-        # -------------------------
-        safety_result = safety_check(text)
-        if safety_result:
+        # 1. Language Validator
+        lang_validation = validate_language({"language": language})
+        if not lang_validation.get("allowed"):
             return {
-                "answer": safety_result["message"],
+                "answer": lang_validation["response"]["message"],
                 "language": language,
-                "mode": "safety_block",
+                "mode": lang_validation["response"]["response_type"],
                 "text": text
             }
 
-        # RAG + LLM
+        # 2. Detectors (Intent, Greeting, Safety)
+        intent_result = detect_intent(text)
+        greeting_result = detect_greeting(text)
+        safety_result = safety_check(text)
+
+   
+        # 3. Orchestration Branch
+    
+        standard_response = map_response(
+            greeting=greeting_result,
+            safety=safety_result,
+            intent=intent_result,
+            language=language
+        )
+
+        if standard_response:
+            return {
+                "answer": standard_response["message"],
+                "language": language,
+                "mode": standard_response["response_type"],
+                "text": text
+            }
+
+        # RAG + LLM Engine
         result = answer_query_hybrid(
             query=text,
             language=language

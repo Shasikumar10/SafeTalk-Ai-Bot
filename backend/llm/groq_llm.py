@@ -11,17 +11,28 @@ if not GROQ_API_KEY:
 
 client = Groq(api_key=GROQ_API_KEY)
 
-# ✅ GUARANTEED WORKING MODEL
 MODEL = "llama-3.1-8b-instant"
 
 
+chat_history = []
+
 def answer_general(prompt: str) -> str:
+    global chat_history
+    messages = list(chat_history)
+    messages.append({"role": "user", "content": prompt})
+    
     res = client.chat.completions.create(
         model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
         temperature=0.4
     )
-    return res.choices[0].message.content.strip()
+    answer = res.choices[0].message.content.strip()
+    
+    chat_history.append({"role": "user", "content": prompt})
+    chat_history.append({"role": "assistant", "content": answer})
+    if len(chat_history) > 10: chat_history = chat_history[-10:]
+    
+    return answer
 
 
 def answer_with_context(context, question: str, instruction: str = "") -> str:
@@ -36,12 +47,22 @@ Context:
 Question:
 {question}
 """
+    global chat_history
+    messages = list(chat_history)
+    messages.append({"role": "user", "content": prompt})
+    
     res = client.chat.completions.create(
         model=MODEL,
-        messages=[{"role": "user", "content": prompt}],
+        messages=messages,
         temperature=0.2,
     )
-    return res.choices[0].message.content.strip()
+    answer = res.choices[0].message.content.strip()
+    
+    chat_history.append({"role": "user", "content": question})
+    chat_history.append({"role": "assistant", "content": answer})
+    if len(chat_history) > 10: chat_history = chat_history[-10:]
+    
+    return answer
 
 
 

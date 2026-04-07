@@ -2,17 +2,19 @@ let recorder;
 let mediaStream;
 let isRecording = false;
 let greeted = false;
+let abortController = null;
 let abortCurrentAction = false;
 
-// Audio analysis for silence detection
 let audioContext;
 let analyser;
 let silenceStart = null;
 let recordStartTime = null;
+let smoothedRms = 0;
 
-const SILENCE_THRESHOLD = 0.015;
-const SILENCE_DURATION = 2500;
-const MIN_RECORD_TIME = 2500;
+const SILENCE_THRESHOLD = 0.05;
+const SILENCE_DURATION = 2000;
+const INITIAL_WAIT_TIME = 5000;
+
 
 const recordBtn = document.getElementById("recordBtn");
 const btnText = document.getElementById("btnText");
@@ -23,52 +25,33 @@ const answerText = document.getElementById("answerText");
 const langTag = document.getElementById("langTag");
 const orb = document.getElementById("orb");
 const waveform = document.getElementById("waveform");
-const stopBtn = document.getElementById("stopBtn");
 
-/* ---------- HARD-CODED GREETINGS ---------- */
-const GREETING_KEYWORDS = ["hi", "hello", "hey", "good morning", "good evening"];
 
-function detectGreeting(text) {
-    if (!text) return false;
-    const lowerText = text.toLowerCase();
-    return GREETING_KEYWORDS.some(word => lowerText.includes(word));
-}
 
 function speakGreeting() {
-    const utter = new SpeechSynthesisUtterance("Hello! I am SafeTalk AI. How can I help you today?");
+    const utter = new SpeechSynthesisUtterance("Hi, how can I help you?");
     utter.lang = "en-IN";
     utter.rate = 1;
     utter.pitch = 1;
 
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utter);
-    
-    stopBtn.disabled = false;
-    utter.onend = () => {
-        stopBtn.disabled = true;
-    }
+
 }
 
-/* ---------- Speak answer ---------- */
 function speak(text, lang) {
     console.log(`Speaking in ${lang}: ${text}`);
     const utter = new SpeechSynthesisUtterance(text);
     utter.lang =
         lang === "te" ? "te-IN" :
-        lang === "hi" ? "hi-IN" :
-        "en-IN";
+            lang === "hi" ? "hi-IN" :
+                "en-IN";
 
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utter);
-    
-    stopBtn.disabled = false;
-    
-    utter.onend = () => {
-        stopBtn.disabled = true;
-    }
+
 }
 
-/* ---------- Monitor silence ---------- */
 function monitorSilence() {
     if (!isRecording) return;
 
@@ -81,43 +64,57 @@ function monitorSilence() {
         sum += v * v;
     }
     const rms = Math.sqrt(sum / buffer.length);
+    smoothedRms = (smoothedRms * 0.8) + (rms * 0.2);
 
-    if (rms < SILENCE_THRESHOLD) {
+    let maxSilenceAllowed = SILENCE_DURATION;
+
+    if (smoothedRms >= SILENCE_THRESHOLD) {
+        if (!window.hasSpoken) window.hasSpoken = true;
+        silenceStart = null;
+    } else {
         if (!silenceStart) silenceStart = Date.now();
+        maxSilenceAllowed = window.hasSpoken ? SILENCE_DURATION : INITIAL_WAIT_TIME;
 
-        if (
-            Date.now() - silenceStart > SILENCE_DURATION &&
-            Date.now() - recordStartTime > MIN_RECORD_TIME
-        ) {
+        if (Date.now() - silenceStart > maxSilenceAllowed) {
+            console.log("Silence detected, stopping recording. Final RMS:", smoothedRms.toFixed(4));
             stopRecording();
             return;
         }
-    } else {
-        silenceStart = null;
     }
+
 
     requestAnimationFrame(monitorSilence);
 }
 
-/* ---------- Start recording ---------- */
 async function startRecording() {
     try {
         isRecording = true;
         greeted = false;
         abortCurrentAction = false;
+        abortController = new AbortController();
         silenceStart = null;
         recordStartTime = Date.now();
+        smoothedRms = 0;
+        window.hasSpoken = false;
 
-        // UI Updates
         recordBtn.classList.add("recording");
         orb.classList.add("recording");
         waveform.classList.remove("hidden");
         btnText.innerText = "Stop Recording";
         statusText.innerText = "Listening...";
         resultCard.classList.add("hidden");
-        stopBtn.disabled = false;
 
-        mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        speakGreeting();
+
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+                channelCount: 1,
+                sampleRate: 16000,
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true
+            }
+        });
 
         audioContext = new (window.AudioContext || window.webkitAudioContext)();
         analyser = audioContext.createAnalyser();
@@ -126,20 +123,20 @@ async function startRecording() {
         const source = audioContext.createMediaStreamSource(mediaStream);
         source.connect(analyser);
 
-        recorder = new MediaRecorder(mediaStream);
+        recorder = new MediaRecorder(mediaStream, {
+            audioBitsPerSecond: 128000
+        });
         const chunks = [];
 
         recorder.ondataavailable = e => chunks.push(e.data);
 
         recorder.onstop = async () => {
-            // UI Updates
             waveform.classList.add("hidden");
             recordBtn.classList.remove("recording");
             orb.classList.remove("recording");
             btnText.innerText = "Start Recording";
             statusText.innerText = "Processing...";
 
-            // Cleanup
             mediaStream.getTracks().forEach(t => t.stop());
             if (audioContext.state !== 'closed') {
                 audioContext.close();
@@ -162,40 +159,40 @@ async function startRecording() {
             try {
                 const res = await fetch("http://127.0.0.1:8000/process-audio", {
                     method: "POST",
-                    body: formData
+                    body: formData,
+                    signal: abortController.signal
                 });
 
                 if (!res.ok) throw new Error("Backend server error");
+                if (abortCurrentAction) return;
 
                 const data = await res.json();
+                if (abortCurrentAction) return;
                 console.log("Backend response:", data);
 
-                // ✅ GREETING DETECTION (Now working thanks to backend fix)
-                if (!greeted && detectGreeting(data.text)) {
-                    greeted = true;
-                    speakGreeting();
-                    statusText.innerText = "👋 Greeting detected";
-                    return;
-                }
 
-                // Show Result
+
                 transcriptText.innerText = data.text || "—";
                 answerText.innerText = data.answer || "I'm not sure how to respond to that.";
-                langTag.innerText = data.language ? data.language.toUpperCase() : "EN";
-                
+
+                if (data.mode && data.mode.includes("greeting")) {
+                    langTag.innerText = "⚡ FAST GREETING";
+                    langTag.style.backgroundColor = "#10b981";
+                } else {
+                    langTag.innerText = data.language ? data.language.toUpperCase() : "EN";
+                    langTag.style.backgroundColor = "var(--primary-blue)";
+                }
+
                 resultCard.classList.remove("hidden");
                 statusText.innerText = "Ready to listen";
 
                 if (data.answer) {
                     speak(data.answer, data.language);
-                } else {
-                    stopBtn.disabled = true;
                 }
 
             } catch (err) {
                 console.error("Fetch error:", err);
                 statusText.innerText = "⚠️ Error connecting to backend";
-                stopBtn.disabled = true;
             } finally {
                 isRecording = false;
             }
@@ -210,7 +207,6 @@ async function startRecording() {
     }
 }
 
-/* ---------- Stop recording ---------- */
 function stopRecording() {
     if (!isRecording) return;
     isRecording = false;
@@ -219,7 +215,6 @@ function stopRecording() {
     }
 }
 
-/* ---------- Button Interaction ---------- */
 recordBtn.onclick = () => {
     if (isRecording) {
         stopRecording();
@@ -228,23 +223,4 @@ recordBtn.onclick = () => {
     }
 };
 
-/* ---------- Stop Entire Conversation ---------- */
-stopBtn.onclick = () => {
-    console.log("Stopping conversation...");
-    abortCurrentAction = true;
-    
-    // 1. Stop recording if in progress
-    if (isRecording) {
-        stopRecording();
-    }
-    
-    // 2. Cancel Speech Synthesis
-    window.speechSynthesis.cancel();
-    
-    // 3. Reset UI
-    stopBtn.disabled = true;
-    statusText.innerText = "Stopped.";
-    orb.classList.remove("recording");
-    waveform.classList.add("hidden");
-    btnText.innerText = "Start Recording";
-};
+

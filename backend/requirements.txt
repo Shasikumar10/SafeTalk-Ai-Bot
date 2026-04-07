@@ -8,7 +8,7 @@ torch
 torchaudio
 librosa
 soundfile
-openai-whisper
+duckduckgo-search
 silero-vad
 detoxify
 python-dotenv

@@ -25,7 +25,6 @@ def answer_query_hybrid(*, query: str, language: str):
     docs = build_dynamic_kb(query)
     
     if not docs:
-        # Fallback to general LLM if no facts found
         instruction = language_instruction(language)
         prompt = f"{instruction}\n\n{query}"
         answer = answer_general(prompt)

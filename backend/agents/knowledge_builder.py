@@ -7,9 +7,9 @@ Fetches factual text from trusted sources
 
 import requests
 from bs4 import BeautifulSoup
+from duckduckgo_search import DDGS
 
 
-# ---------------- Wikipedia Fetch ----------------
 
 def fetch_wikipedia(query: str, max_chars=2000):
     """
@@ -30,32 +30,21 @@ def fetch_wikipedia(query: str, max_chars=2000):
         return None
 
 
-# ---------------- DuckDuckGo Fetch ----------------
 
 def fetch_duckduckgo(query: str, max_chars=2000):
     """
-    Fetch instant answer text from DuckDuckGo.
+    Fetch live web search results from DuckDuckGo.
     """
-    url = "https://api.duckduckgo.com/"
-    params = {
-        "q": query,
-        "format": "json",
-        "no_html": 1,
-        "skip_disambig": 1
-    }
-
     try:
-        res = requests.get(url, params=params, timeout=5)
-        data = res.json()
-
-        text = data.get("AbstractText")
+        results = DDGS().text(query, max_results=3)
+        if not results:
+            return None
+        text = " ".join([r.get("body", "") for r in results])
         return text[:max_chars] if text else None
-
-    except Exception:
+    except Exception as e:
+        print(f"Web Search Error: {e}")
         return None
 
-
-# ---------------- Agent Orchestrator ----------------
 
 def build_dynamic_kb(query: str):
     """

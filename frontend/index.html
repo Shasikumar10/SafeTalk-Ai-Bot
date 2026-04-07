@@ -3,70 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SafeTalk AI | Secure Voice Intelligence</title>
+    <title>SafeTalk AI | Voice Assistant</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
-    <div class="background-glow"></div>
+    <div class="aurora-bg"></div>
     
-    <div class="container">
+    <div class="glass-panel">
         <header>
-            <div class="logo">
-                <span class="shield-icon">🛡️</span>
-                <h1>SafeTalk AI</h1>
+            <div class="logo-container">
+                <svg class="modern-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 2v20M17 5v14M22 10v4M7 5v14M2 10v4"/>
+                </svg>
+                <h1 class="gradient-text">SafeTalk AI</h1>
             </div>
-            <p class="subtitle">Secure, Multi-lingual Voice Assistant</p>
+            <p class="subtitle">Next-Gen Voice Intelligence</p>
         </header>
 
-        <main>
-            <div class="voice-center">
-                <div id="orb" class="orb"></div>
-                <div id="waveform" class="waveform hidden">
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                </div>
+        <div class="center-stage">
+            <div id="orb" class="colorful-orb">
+                <div class="orb-layer layer-1"></div>
+                <div class="orb-layer layer-2"></div>
+                <div class="orb-layer layer-3"></div>
             </div>
-
-            <div class="controls">
-                <button id="recordBtn" class="primary-btn">
-                    <span class="btn-icon">🎤</span>
-                    <span id="btnText">Start Recording</span>
-                </button>
-                <button id="stopBtn" class="secondary-btn" disabled>
-                    <span class="btn-icon">🛑</span>
-                    <span>Stop</span>
-                </button>
+            <div id="waveform" class="waveform-bars hidden">
+                <div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div><div class="bar"></div>
             </div>
+        </div>
 
-            <div id="status" class="status-text">Ready to listen</div>
+        <div class="controls-area">
+            <button id="recordBtn" class="neon-btn">
+                <svg class="btn-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                <span id="btnText">Start Recording</span>
+            </button>
+            <div id="status" class="status-msg">Waiting for your voice...</div>
+        </div>
 
-            <div id="resultCard" class="result-card hidden">
-                <div class="card-section">
-                    <h3>You said:</h3>
-                    <p id="transcriptText"></p>
-                </div>
-                <div class="divider"></div>
-                <div class="card-section">
-                    <div class="response-header">
-                        <h3>SafeTalk Response</h3>
-                        <span id="langTag" class="badge">EN</span>
+        <div id="resultCard" class="result-glass hidden">
+            <div class="chat-row user-row">
+                <div class="chat-icon">You</div>
+                <div class="chat-bubble user-text" id="transcriptText">...</div>
+            </div>
+            <div class="chat-row ai-row">
+                <div class="chat-icon gradient-bg">AI</div>
+                <div class="chat-bubble ai-text">
+                    <div class="meta-row">
+                        <span id="langTag" class="tag">EN</span>
                     </div>
-                    <p id="answerText"></p>
+                    <p id="answerText">...</p>
                 </div>
             </div>
-        </main>
-
-        <footer>
-            <p>&copy; 2026 SafeTalk AI. All rights reserved.</p>
-        </footer>
+        </div>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=3"></script>
 </body>
 </html>
