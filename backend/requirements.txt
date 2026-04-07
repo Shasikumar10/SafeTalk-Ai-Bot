@@ -17,3 +17,4 @@ langdetect
 python-multipart
 noisereduce
 pydub
+gunicorn

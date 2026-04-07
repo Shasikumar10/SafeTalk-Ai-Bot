@@ -1,17 +1,8 @@
 import os
 import io
 import tempfile
-from pydub import AudioSegment
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-
-from audio_pipeline import process_audio, transcribe_audio
-from language_validator import validate_language
-from intent_engine import detect_intent
-from greeting_detector import detect_greeting
-from safety_guard import safety_check
-from standard_response_mapper import map_response
-from rag.rag_engine import answer_query_hybrid
 
 app = FastAPI()
 
@@ -26,6 +17,7 @@ app.add_middleware(
 @app.get("/")
 async def root():
     return {"status": "SafeTalk AI is live"}
+
 
 def detect_language(text: str) -> str:
     for ch in text:
@@ -45,6 +37,16 @@ def normalize_query(text: str) -> str:
 
 @app.post("/process-audio")
 async def process_audio_endpoint(file: UploadFile = File(...)):
+    # SUPER LAZY IMPORTS - Loads only on first request to survive Render's port scan
+    from pydub import AudioSegment
+    from audio_pipeline import process_audio, transcribe_audio
+    from language_validator import validate_language
+    from intent_engine import detect_intent
+    from greeting_detector import detect_greeting
+    from safety_guard import safety_check
+    from standard_response_mapper import map_response
+    from rag.rag_engine import answer_query_hybrid
+
     content = await file.read()
     if not content:
         return {"answer": "No audio data received.", "mode": "error"}
@@ -99,9 +101,7 @@ async def process_audio_endpoint(file: UploadFile = File(...)):
         greeting_result = detect_greeting(text)
         safety_result = safety_check(text)
 
-   
         # 3. Orchestration Branch
-    
         standard_response = map_response(
             greeting=greeting_result,
             safety=safety_result,
@@ -128,5 +128,5 @@ async def process_audio_endpoint(file: UploadFile = File(...)):
         return result
 
     finally:
-        if os.path.exists(audio_path):
+        if audio_path and os.path.exists(audio_path):
             os.remove(audio_path)

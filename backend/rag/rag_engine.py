@@ -1,10 +1,3 @@
-from llm.groq_llm import answer_general, answer_with_context
-from agents.knowledge_builder import build_dynamic_kb
-from rag.rag_store import RAGStore
-
-rag_store = RAGStore()
-
-
 def language_instruction(language: str) -> str:
     if language == "te":
         return "Answer ONLY in Telugu."
@@ -13,14 +6,28 @@ def language_instruction(language: str) -> str:
     return "Answer ONLY in English."
 
 
+_rag_store = None
+
+def get_rag_store():
+    global _rag_store
+    if _rag_store is None:
+        from rag.rag_store import RAGStore
+        _rag_store = RAGStore()
+    return _rag_store
+
+
 def answer_query_hybrid(*, query: str, language: str):
     """
     1. Fetch dynamic knowledge.
-    2. Build/update RAGStore.
+    2. Build/update RAGStore (Lazy).
     3. Retrieve relevant context.
     4. Answer with LLM.
     """
+    from llm.groq_llm import answer_general, answer_with_context
+    from agents.knowledge_builder import build_dynamic_kb
     
+    rag_store = get_rag_store()
+
     # 1. Fetch info
     docs = build_dynamic_kb(query)
     
