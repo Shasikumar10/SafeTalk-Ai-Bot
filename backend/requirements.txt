@@ -13,8 +13,6 @@ silero-vad
 detoxify
 python-dotenv
 groq
-SpeechRecognition
-pyaudio
 langdetect
 python-multipart
 noisereduce
