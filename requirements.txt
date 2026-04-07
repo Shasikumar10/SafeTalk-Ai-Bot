@@ -16,3 +16,4 @@ groq
 langdetect
 python-multipart
 noisereduce
+pydub
