@@ -157,7 +157,7 @@ async function startRecording() {
             formData.append("file", blob);
 
             try {
-                const res = await fetch("http://127.0.0.1:8000/process-audio", {
+                const res = await fetch("https://safetalk-backend-siph.onrender.com/process-audio", {
                     method: "POST",
                     body: formData,
                     signal: abortController.signal
