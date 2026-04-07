@@ -1,10 +1,5 @@
-import torch
-import librosa
-import numpy as np
 import tempfile
 import os
-import noisereduce as nr
-import soundfile as sf
 from groq import Groq
 from dotenv import load_dotenv
 
@@ -15,6 +10,7 @@ _vad_model = None
 _vad_utils = None
 
 def get_vad_model():
+    import torch
     global _vad_model, _vad_utils
     if _vad_model is None:
         print("Loading VAD Model (Silero)...")
@@ -49,6 +45,10 @@ def merge_segments(segments, max_gap=0.8):
 
 # Main audio processing pipeline
 def process_audio(file_path: str, sample_rate: int = 16000):
+    import librosa
+    import noisereduce as nr
+    import soundfile as sf
+    import torch
     """
     Steps:
     1. Load audio

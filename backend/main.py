@@ -23,6 +23,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.get("/")
+async def root():
+    return {"status": "SafeTalk AI is live"}
 
 def detect_language(text: str) -> str:
     for ch in text:

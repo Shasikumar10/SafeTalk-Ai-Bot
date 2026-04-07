@@ -1,5 +1,3 @@
-import faiss
-import numpy as np
 _embedder = None
 
 def get_embedder():
@@ -16,6 +14,8 @@ class RAGStore:
         self.texts = []
 
     def build(self, docs):
+        import faiss
+        import numpy as np
         embedder = get_embedder()
         emb = embedder.encode(docs, normalize_embeddings=True)
         dim = emb.shape[1]
@@ -24,6 +24,7 @@ class RAGStore:
         self.texts = docs
 
     def retrieve_with_scores(self, query, k=3):
+        import numpy as np
         embedder = get_embedder()
         q_emb = embedder.encode([query], normalize_embeddings=True).astype("float32")
         scores, ids = self.index.search(q_emb, k)
