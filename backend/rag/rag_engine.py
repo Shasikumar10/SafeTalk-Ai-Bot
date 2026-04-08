@@ -11,7 +11,7 @@ _rag_store = None
 def get_rag_store():
     global _rag_store
     if _rag_store is None:
-        from rag.rag_store import RAGStore
+        from rag_store import RAGStore
         _rag_store = RAGStore()
     return _rag_store
 
@@ -23,8 +23,8 @@ def answer_query_hybrid(*, query: str, language: str):
     3. Retrieve relevant context.
     4. Answer with LLM.
     """
-    from llm.groq_llm import answer_general, answer_with_context
-    from agents.knowledge_builder import build_dynamic_kb
+    from groq_llm import answer_general, answer_with_context
+    from knowledge_builder import build_dynamic_kb
     
     rag_store = get_rag_store()
 

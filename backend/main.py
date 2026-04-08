@@ -45,7 +45,7 @@ async def process_audio_endpoint(file: UploadFile = File(...)):
     from greeting_detector import detect_greeting
     from safety_guard import safety_check
     from standard_response_mapper import map_response
-    from rag.rag_engine import answer_query_hybrid
+    from rag_engine import answer_query_hybrid
 
     content = await file.read()
     if not content:
