@@ -157,6 +157,7 @@ async function startRecording() {
             formData.append("file", blob);
 
             try {
+                // Updated to Hugging Face Backend
                 const res = await fetch("https://shasikumar10-safe-talk-ai.hf.space/process-audio", {
                     method: "POST",
                     body: formData,
